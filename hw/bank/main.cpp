@@ -7,115 +7,145 @@ typedef struct stats {
   int dropouts;
 } stats;
 
-class Client {
-  private:
-    string name;
-    int timeSinceArrival;
-    int serviceDuration;
+class Client 
+{
+private:
+  string name;
+  int timeArrival;
+  int serviceDuration;
 
-  public:
-    Client(string name, int timeSinceArrival, int serviceDuration):
-    name(name), timeSinceArrival(timeSinceArrival), serviceDuration(serviceDuration) {
-    }
+public:
+  Client(string name, int timeArrival, int serviceDuration) : 
+  name(name), timeArrival(timeArrival), serviceDuration(serviceDuration) {
+  }
 
-    string getName() {
-      return name;
-    }
+  string getName() {
+    return name;
+  }
 
-    int getTimeSinceArrival() {
-      return timeSinceArrival;
-    }
+  int getTimeArrival() {
+    return timeArrival;
+  }
 
-    int getServiceDuration() {
-      return serviceDuration;
-    }
+  int getServiceDuration() {
+    return serviceDuration;
+  }
 
-    void incrementTime() {
-      timeSinceArrival++;
-    }
+  void incrementTime() {
+    timeArrival++;
+  }
 };
 
-class CommonClient:public Client {
-  private:
-    int maxWaintingTime;
-  public:
-    CommonClient(string name, int timeSinceArrival, int serviceDuration, int maxWaintingTime):
-    Client(name, timeSinceArrival, serviceDuration), maxWaintingTime(maxWaintingTime) {
-    }
+class CommonClient : public Client
+{
+private:
+  int maxWainting;
 
-    int getMaxWaintingTime() {
-      return maxWaintingTime;
-    }
+public:
+  CommonClient(string name, int timeArrival, int serviceDuration, int maxWainting) : 
+  Client(name, timeArrival, serviceDuration), maxWainting(maxWainting) {
+  }
+
+  int getMaxWaiting() {
+    return maxWainting;
+  }
 };
 
-class PreferredClient:public Client {
-  public:
-    PreferredClient(string name, int timeSinceArrival, int serviceDuration):
-    Client(name, timeSinceArrival, serviceDuration) {
-    }
+class PreferredClient : public Client 
+{
+public:
+  PreferredClient(string name, int timeArrival, int serviceDuration) :
+  Client(name, timeArrival, serviceDuration) {
+  }
 };
 
-class Bank {
-  private:
-    int numberOfClients;
-    int maxCapacity;
-    Client **queue;
-  
-  public:
-    Bank(int maxCapacity):
-    numberOfClients(0), maxCapacity(maxCapacity), queue(new Client*[maxCapacity]) {
-    }
+class Bank 
+{
+private:
+  int maxClients;
+  int nCClients;
+  int nPClients;
+  CommonClient **cclients;
+  PreferredClient **pclients;
 
-    Bank(const Bank &b): numberOfClients(b.numberOfClients) {
-      for(int i = 0; i < numberOfClients; i++) queue[i] = b.queue[i];
-    }
-
-    ~Bank() {
-      delete[] queue;
-    }
-
-    bool insertClient(Client &c);
-
-    stats simulate();
-};
-
-bool Bank::insertClient(Client &c) {
-  if(numberOfClients + 1 > maxCapacity) return false;
-  queue[++numberOfClients - 1] = &c;
-  return true;
-}
-
-stats Bank::simulate(){
-  float time = 0;
-  int min = 0, client = 0, dropouts = 0, service = 0;
-  while(client < numberOfClients) {
-    min++; service++;
-    for(int i = client; i < numberOfClients; i++) {
-      if(!queue[i]) continue; 
-      queue[i]->incrementTime();
-      CommonClient *ptr = (CommonClient*) queue[i];
-      if(i != client && ptr->getMaxWaintingTime() < ptr->getTimeSinceArrival()) {
-        cout << min << " " << ptr->getName() << " gave up waiting" << endl;
-        queue[i] = NULL;
-        dropouts++;
-      }
-    }
-    if(!queue[client]) {
-      client++; service = 0;
-      continue;
-    }
-    else if(queue[client]->getServiceDuration() == service) {
-      cout << min << " " << queue[client]->getName() << " was attended" << endl;
-      time += queue[client]->getTimeSinceArrival() - queue[client]->getServiceDuration();
-      client++; service = 0;
+public:
+  Bank(int maxClients) : maxClients(maxClients), nCClients(0), nPClients(0),
+  cclients(new CommonClient*[maxClients]), pclients(new PreferredClient*[maxClients]) {
+    for(int i = 0; i < maxClients; i++) {
+      cclients[i] = NULL; 
+      pclients[i] = NULL;
     }
   }
 
-  stats st;
-  st.dropouts = dropouts;
-  st.averageTime = time / (numberOfClients - dropouts);
-  return st;
-}
+  Bank(const Bank &b) : maxClients(b.maxClients), nCClients(b.nCClients), nPClients(b.nPClients),
+  cclients(new CommonClient*[maxClients]), pclients(new PreferredClient*[maxClients]) {
+    for(int i = 0; i < maxClients; i++) {
+      cclients[i] = b.cclients[i]; 
+      pclients[i] = b.pclients[i];
+    }
+  }
+
+  ~Bank() {
+    delete[] cclients;
+    delete[] pclients;
+  }
+
+  bool insertClient(CommonClient &cc) {
+    if(nCClients + nPClients > maxClients) return false;
+    cclients[++nCClients - 1] = &cc;
+    return true;
+  }
+
+  bool insertClient(PreferredClient &pc) {
+    if(nCClients + nPClients > maxClients) return false;
+    pclients[++nPClients - 1] = &pc;
+    return true;
+  }
+
+  stats simulate() {
+    float tTotal = 0;
+    int minute = 0;
+    int cclient = 0, pclient = 0;
+    int tCommonSrv = 0, tPreferredSrv = 0;
+    int dropouts = 0;
+    while(cclient + pclient < nCClients + nPClients) {
+      minute++; tCommonSrv++; tPreferredSrv++;
+      for(int i = cclient; i < nCClients; i++) {
+        if(!cclients[i]) continue;
+        cclients[i]->incrementTime();
+        if(i != cclient && cclients[i]->getMaxWaiting() < cclients[i]->getTimeArrival()) {
+          cout << minute << " " << cclients[i]->getName() << " gave up waiting" << endl;
+          cclients[i] = NULL;
+          dropouts++;
+        }
+      }
+      for(int i = pclient; i < nPClients; i++) {
+        if(!pclients[i]) break;
+        pclients[i]->incrementTime();
+      }
+      if(cclient != nCClients && !cclients[cclient]) {
+        cclient++; 
+        tCommonSrv = 0;
+      }
+      else if(cclient != nCClients && cclients[cclient]->getServiceDuration() == tCommonSrv) {
+        cout << minute << " " << cclients[cclient]->getName() << " was attended" << endl;
+        tTotal += cclients[cclient]->getTimeArrival() - cclients[cclient]->getServiceDuration();
+        cclient++; tCommonSrv = 0;
+      }
+      if(pclient == nPClients || !pclients[pclient]) continue;
+      else if(pclients[pclient]->getServiceDuration() == tPreferredSrv) {
+        cout << minute << " " << pclients[pclient]->getName() << " was attended" << endl;
+        tTotal += pclients[pclient]->getTimeArrival() - pclients[pclient]->getServiceDuration();
+        pclient++; tPreferredSrv = 0;
+      }
+    }
+
+    stats st;
+    st.dropouts = dropouts;
+    st.averageTime = tTotal / (nCClients + nPClients - dropouts);
+    return st;
+  }
+};
 
 int main() {
   Bank b(10);
